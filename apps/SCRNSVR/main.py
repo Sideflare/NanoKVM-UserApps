@@ -18,6 +18,7 @@ ACCENT = (0, 200, 255)
 TEXT   = (240, 240, 240)
 DIM    = (100, 100, 110)
 SEL    = (40, 70, 140)
+OK     = (0, 210, 110)
 
 _FP = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 _FB = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"

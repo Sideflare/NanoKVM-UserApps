@@ -12,7 +12,7 @@ Usage:
 import os, sys, time, json, signal, struct, select, subprocess, random, mmap
 
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.json")
+CONFIG_FILE = "/etc/kvm/screensaver.json"
 DAEMON_PID  = "/tmp/screensaver_daemon.pid"
 PLAYING_PID = "/tmp/screensaver_playing.pid"
 STATUS_FILE = "/tmp/screensaver_status.json"
