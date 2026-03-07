@@ -1,0 +1,8 @@
+[application]
+name = "EQTY"
+version = "1.0.0"
+description = "Real-time stock ticker for NanoKVM"
+[author]
+name = "cleavines01"
+[interaction]
+requires_user_input = true
