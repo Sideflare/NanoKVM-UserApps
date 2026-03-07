@@ -11,7 +11,8 @@ Controls:
   Knob 2s hold → back to Home (or exit from Home)
   Touch        → tap buttons directly
 
-Voice commands use OpenAI Whisper API — set your key in Setup.
+Voice commands use Vosk offline speech recognition (no API key needed).
+Model loaded from ./model/ at startup.
 Agent sends messages to picoclaw agent -m via the configured profile.
 """
 
@@ -110,7 +111,7 @@ HOME_ICONS   = [">_ ", "(O)", "## ", "[K]", "{} ", " i "]
 
 # ── Config ────────────────────────────────────────────────────────────────────
 CFG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
-CFG_DEF  = {"whisper_key": "", "whisper_url": "", "profile": "claude"}
+CFG_DEF  = {"profile": "claude"}
 
 def load_cfg():
     try:
@@ -298,12 +299,10 @@ class App:
     def _stop_recording(self):
         self.voice_state = 'processing'
         self._dirty = True
-        wav = self.rec.stop()
+        audio = self.rec.stop()
 
         def _transcribe():
-            key  = self.cfg.get('whisper_key')
-            url  = self.cfg.get('whisper_url') or None
-            text, err = vc.transcribe(wav, key, url)
+            text, err = vc.transcribe(audio)
             if err:
                 self.voice_state = 'error'
                 self.voice_err   = err
@@ -360,10 +359,12 @@ class App:
 
     # ── Setup ─────────────────────────────────────────────────────────────────
     def _setup_action(self, sel):
-        items = ['Whisper Key', 'Profile', 'Onboard', 'Gateway', 'Back']
+        items = ['Model Status', 'Profile', 'Onboard', 'Gateway', 'Back']
         item  = items[sel]
         if item == 'Back':
             self.goto(PG_HOME)
+        elif item == 'Model Status':
+            self.setup_result = "Model ready" if self.rec.model_ready else "Model loading..."
         elif item == 'Profile':
             profs = self.setup_profiles or ['claude', 'gemini']
             cur   = self.cfg.get('profile', 'claude')
@@ -372,8 +373,6 @@ class App:
             self.cfg['profile'] = nxt
             save_cfg(self.cfg)
             self.setup_result = f"Profile: {nxt}"
-        elif item == 'Whisper Key':
-            self.setup_result = "SSH in: edit config.json"
         elif item == 'Onboard':
             self.setup_result = "Running onboard..."
             def _run():
@@ -487,6 +486,8 @@ class App:
         centered(d, label, LW//2, 127, FS, col)
         if self.voice_state == 'recording':
             centered(d, f"(max {vc.MAX_SECS}s)", LW//2, 139, FN, DIM)
+        elif self.voice_state == 'idle' and not self.rec.model_ready:
+            centered(d, "Model loading...", LW//2, 139, FN, WARN)
 
         d.line([10, 146, LW-10, 146], fill=DIM, width=1)
 
@@ -546,9 +547,9 @@ class App:
 
     def _draw_setup(self, d):
         topbar(d, "< Setup", dot=DIM)
-        items = ['Whisper Key', 'Profile', 'Onboard', 'Gateway', 'Back']
+        items = ['Model Status', 'Profile', 'Onboard', 'Gateway', 'Back']
         vals  = [
-            "set" if self.cfg.get('whisper_key') else "not set",
+            "ready" if self.rec.model_ready else "loading...",
             self.cfg.get('profile', 'claude'),
             "run", "start", "",
         ]
