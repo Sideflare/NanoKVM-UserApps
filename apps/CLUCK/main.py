@@ -7,7 +7,7 @@ Features:
 - Interactive clock that avoids pecking.
 - Configurable entities via gear menu.
 """
-import os, sys, time, random, math, threading
+import os, sys, time, random, math, threading, mmap
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from input import TouchScreen, GpioKeys, RotaryEncoder
@@ -16,6 +16,19 @@ from input import TouchScreen, GpioKeys, RotaryEncoder
 PW, PH = 172, 320
 LW, LH = 320, 172
 BG_COLOR = (0, 0, 0)
+
+class FB:
+    def __init__(self):
+        sz = PW * PH * 2
+        self.fd = os.open('/dev/fb0', os.O_RDWR)
+        self.mm = mmap.mmap(self.fd, sz, mmap.MAP_SHARED, mmap.PROT_WRITE)
+        self.arr = np.frombuffer(self.mm, dtype=np.uint16).reshape(PH, PW)
+    def show(self, img: Image.Image):
+        p = img.rotate(90, expand=True)
+        a = np.array(p, dtype=np.uint16)
+        self.arr[:,:] = (a[:,:,0]>>3<<11)|(a[:,:,1]>>2<<5)|(a[:,:,2]>>3)
+    def close(self):
+        self.mm.close(); os.close(self.fd)
 
 # Colors
 WHITE  = (255, 255, 255)
@@ -57,8 +70,12 @@ def draw_chicken(d, x, y, s=1.0, face_right=True, pecking=False):
     
     # Beak & Wattle
     bx = hx+hw if face_right else hx
-    d.polygon([(bx, hy+4*s), (bx, hy+8*s), (bx+(6*s if face_right else -6*s), hy+6*s)], fill=ORANGE)
-    d.ellipse([bx+(0 if face_right else -2*s), hy-4*s, bx+(4*s if face_right else -6*s), hy], fill=RED) # Comb
+    if face_right:
+        d.polygon([(bx, hy+4*s), (bx, hy+8*s), (bx+6*s, hy+6*s)], fill=ORANGE)
+        d.ellipse([bx, hy-4*s, bx+4*s, hy], fill=RED) # Comb
+    else:
+        d.polygon([(bx, hy+4*s), (bx, hy+8*s), (bx-6*s, hy+6*s)], fill=ORANGE)
+        d.ellipse([bx-4*s, hy-4*s, bx, hy], fill=RED) # Comb
     
     # Eye
     ex = hx+6*s if face_right else hx+2*s
@@ -196,7 +213,6 @@ class Entity:
 
 class App:
     def __init__(self):
-        from framebuffer import FB
         self.fb = FB()
         self.clock_pos = [LW-60, 40]
         self.clock_scale = 1.0
