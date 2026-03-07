@@ -50,6 +50,7 @@ class Recorder:
         self._thread      = None
         self.error        = None
         self.device_index = self._find_input()
+        self._last_level  = 0
 
     def _find_input(self):
         for i in range(self.pa.get_device_count()):
@@ -90,13 +91,23 @@ class Recorder:
     def _loop(self):
         max_frames = int(RATE / CHUNK * MAX_SECS)
         count = 0
+        import numpy as np
         while self.recording and count < max_frames:
             try:
                 data = self._stream.read(CHUNK, exception_on_overflow=False)
                 self.frames.append(data)
+                # Calculate level
+                a = np.frombuffer(data, dtype=np.int16)
+                self._last_level = np.sqrt(np.mean(a.astype(np.float32)**2)) if len(a) > 0 else 0
                 count += 1
             except Exception:
                 break
+        self._last_level = 0
+
+    @property
+    def level(self):
+        """Current RMS level (0-32768 approx)"""
+        return self._last_level
 
     def stop(self):
         self.recording = False

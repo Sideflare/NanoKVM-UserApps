@@ -40,6 +40,8 @@ SEL    = (30,   60, 135)
 BTN    = (35,   38,  82)
 BTNH   = (55,  100, 205)
 REC    = (210,  30,  30)
+AI_MSG = (30,  35,  70)
+USER_MSG = (0, 95, 140)
 
 _FP = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 _FB = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
@@ -50,6 +52,30 @@ def _f(sz, bold=False):
 
 FN = _f(9);  FS = _f(11);  FM = _f(13);  FL = _f(16)
 FT = _f(15, True);  FH = _f(18, True)
+
+
+def get_sys_stats():
+    """Retrieve system stats for the Status/Setup pages."""
+    try:
+        import psutil
+        cpu = f"{psutil.cpu_percent()}%"
+        mem = f"{psutil.virtual_memory().percent}%"
+        # temp
+        try:
+            with open('/sys/class/thermal/thermal_zone0/temp') as f:
+                temp = f"{int(f.read()) // 1000}°C"
+        except: temp = "?"
+        # ip
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+        except: ip = "127.0.0.1"
+        return {"cpu": cpu, "mem": mem, "temp": temp, "ip": ip}
+    except:
+        return {"cpu": "?", "mem": "?", "temp": "?", "ip": "?"}
 
 
 class FB:
@@ -101,6 +127,40 @@ def wordwrap(text, maxw, d, font):
 def drawbtn(d, x0, y0, x1, y1, label, font=FM, color=TEXT, bg=BTN, sel=False):
     rrect(d, x0, y0, x1, y1, fill=BTNH if sel else bg, outline=ACCENT if sel else None)
     centered(d, label, (x0+x1)//2, (y0+y1)//2, font, color)
+
+
+def drawbubble(d, y, role, text, font=FN):
+    """Draw a chat bubble for AI or User."""
+    is_user = (role == 'you')
+    color   = USER_MSG if is_user else AI_MSG
+    txt_col = TEXT
+    max_w   = LW - 60
+    lines   = wordwrap(text, max_w - 20, d, font)
+    if not lines: return y
+    bh = len(lines) * (font.getbbox("A")[3] + 2) + 12
+    bw = max([d.textbbox((0, 0), l, font=font)[2] for l in lines]) + 16
+    
+    x0 = LW - bw - 8 if is_user else 8
+    x1 = x0 + bw
+    rrect(d, x0, y, x1, y + bh, fill=color, r=8)
+    # arrow
+    if is_user:
+        d.polygon([(x1, y+8), (x1+6, y+14), (x1, y+20)], fill=color)
+    else:
+        d.polygon([(x0, y+8), (x0-6, y+14), (x0, y+20)], fill=color)
+
+    ty = y + 6
+    for line in lines:
+        d.text((x0 + 8, ty), line, font=font, fill=txt_col)
+        ty += font.getbbox("A")[3] + 2
+    return y + bh + 6
+
+
+def drawwaveform(d, x, y, w, h, level):
+    """Draw a simple waveform or level meter."""
+    # level is ~0..32768, normalize to 0..h
+    v = min(h, int(level / 3000 * h)) if level > 0 else 2
+    rrect(d, x, y + h//2 - v//2, x + w, y + h//2 + v//2, fill=ACCENT if level > 500 else DIM, r=2)
 
 
 # ── Pages ──────────────────────────────────────────────────────────────────
@@ -161,9 +221,20 @@ class App:
         self.setup_profiles = pc.list_profiles()
         self.setup_result   = ""
 
+        # ── system stats
+        self.stats = {}
+        threading.Thread(target=self._stats_loop, daemon=True).start()
+
         # ── initial background loads
         self._bg('version', pc.get_version)
         self._bg('auth',    pc.auth_status)
+
+    def _stats_loop(self):
+        while True:
+            self.stats = get_sys_stats()
+            if self.page in (PG_HOME, PG_STATUS, PG_SETUP):
+                self._dirty = True
+            time.sleep(2)
 
     # ── Background task helper ────────────────────────────────────────────────
     def _bg(self, key, fn, *args, done=None):
@@ -415,55 +486,57 @@ class App:
         topbar(d, f"PicoClaw  v{ver}", dot=OK if aok else ERR)
 
         # 3×2 button grid — y=22..154
-        bw, bh = LW // 3, (LH - 36) // 2
+        bw, bh = LW // 3, (LH - 44) // 2
         for i, (lbl, ico) in enumerate(zip(HOME_LABELS, HOME_ICONS)):
-            col, row = i % 3, i // 2
-            x0 = col * bw + 3;       y0 = 22 + row * bh + 3
-            x1 = x0 + bw - 6;        y1 = y0 + bh - 6
+            col, row = i % 3, i // 3
+            x0 = col * bw + 4;       y0 = 24 + row * bh + 4
+            x1 = x0 + bw - 8;        y1 = y0 + bh - 8
             sel = (i == self.home_sel)
             rrect(d, x0, y0, x1, y1, fill=SEL if sel else BTN, outline=ACCENT if sel else None)
-            d.text((x0 + 5, y0 + 4), ico, font=FN, fill=DIM)
-            centered(d, lbl, (x0+x1)//2, (y0+y1)//2 + 5, FM, TEXT if sel else DIM)
+            d.text((x0 + 8, y0 + 6), ico, font=FN, fill=ACCENT if sel else DIM)
+            centered(d, lbl, (x0+x1)//2, (y0+y1)//2 + 6, FM, TEXT if sel else DIM)
 
         # Status strip
-        d.rectangle([0, LH-16, LW, LH], fill=PANEL)
+        d.rectangle([0, LH-18, LW, LH], fill=PANEL)
+        s = self.stats
+        stat_str = f"CPU:{s.get('cpu','?')} RAM:{s.get('mem','?')} T:{s.get('temp','?')} IP:{s.get('ip','?')}"
+        d.text((8, LH-15), stat_str, font=FN, fill=DIM)
         prof = self.cfg.get('profile', 'claude')
-        d.text((8, LH-13), f"Profile: {prof}  |  Long-press: exit", font=FN, fill=DIM)
+        d.text((LW - 70, LH-15), f"[{prof}]", font=FN, fill=ACCENT)
 
     def _draw_agent(self, d):
         topbar(d, "< Agent", dot=OK if self._auth_ok() else WARN)
         # Conversation area y=22..143
-        y, lh = 24, 13
-        hist  = self.agent_hist
-        start = max(0, len(hist) - 6 - self.agent_scroll)
-        shown = hist[start:start + 6]
+        y = 26
+        hist = self.agent_hist
+        start = max(0, len(hist) - 4 - self.agent_scroll)
+        shown = hist[start:start + 4]
+        
         if not shown:
-            d.text((10, 40), "Speak into the mic or go to Voice page", font=FS, fill=DIM)
-            d.text((10, 56), "Knob press sends pending transcript", font=FN, fill=DIM)
+            centered(d, "Tap [MIC] to speak", LW//2, 80, FM, DIM)
         else:
             for role, text in shown:
-                color  = ACCENT if role == 'you' else OK
-                prefix = "You: " if role == 'you' else " AI: "
-                for line in wordwrap(prefix + text, LW - 18, d, FN)[:3]:
-                    if y + lh > 143: break
-                    d.text((8, y), line, font=FN, fill=color)
-                    y += lh
+                y = drawbubble(d, y, role, text, font=FN)
+                if y > 143: break
+
         if self.agent_busy:
-            d.text((8, 131), self.agent_msg, font=FN, fill=WARN)
+            d.text((12, 131), self.agent_msg, font=FN, fill=WARN)
 
         # Bottom bar y=143..172
         d.rectangle([0, 143, LW, LH], fill=PANEL)
         d.line([0, 143, LW, 143], fill=DIM, width=1)
+        
         if self.voice_state == 'recording':
-            d.ellipse([8, 149, 18, 159], fill=REC)
-            d.text((22, 148), "Recording...  press knob to stop", font=FS, fill=WARN)
+            drawwaveform(d, 8, 150, 240, 14, self.rec.level)
+            d.text((22, 160), "Listening... press knob to stop", font=FN, fill=ACCENT)
         elif self.voice_state == 'processing':
-            d.text((8, 148), "Transcribing...", font=FS, fill=WARN)
+            d.text((8, 150), "Transcribing...", font=FS, fill=WARN)
         elif self.voice_text:
             d.text((8, 147), f"> {self.voice_text[:34]}", font=FS, fill=TEXT)
             d.text((8, 160), "Press knob to send to agent", font=FN, fill=ACCENT)
         else:
             d.text((8, 153), "Tap [MIC] or knob to record voice", font=FN, fill=DIM)
+            
         mic_col = REC if self.voice_state == 'recording' else BTNH
         rrect(d, LW-48, 145, LW-4, LH-4, fill=mic_col)
         centered(d, "MIC", LW-26, 157, FM, TEXT)
@@ -483,11 +556,15 @@ class App:
         d.ellipse([cx-r-4, cy-r-4, cx+r+4, cy+r+4], fill=PANEL, outline=col, width=2)
         d.ellipse([cx-r, cy-r, cx+r, cy+r], fill=col if self.voice_state == 'recording' else BTN)
         centered(d, "MIC", cx, cy, FL, TEXT if self.voice_state == 'recording' else col)
-        centered(d, label, LW//2, 127, FS, col)
+        
         if self.voice_state == 'recording':
-            centered(d, f"(max {vc.MAX_SECS}s)", LW//2, 139, FN, DIM)
-        elif self.voice_state == 'idle' and not self.rec.model_ready:
-            centered(d, "Model loading...", LW//2, 139, FN, WARN)
+            # Live waveform around the circle
+            drawwaveform(d, cx-50, 135, 100, 16, self.rec.level)
+            centered(d, f"(max {vc.MAX_SECS}s)", LW//2, 153, FN, DIM)
+        else:
+            centered(d, label, LW//2, 127, FS, col)
+            if self.voice_state == 'idle' and not self.rec.model_ready:
+                centered(d, "Model loading...", LW//2, 139, FN, WARN)
 
         d.line([10, 146, LW-10, 146], fill=DIM, width=1)
 
@@ -514,15 +591,22 @@ class App:
         if not self.skills:
             centered(d, "No skills installed", LW//2, 70, FM, DIM)
             d.text((10, 88), "picoclaw skills install <name>", font=FS, fill=DIM); return
-        IH, Y0 = 22, 26
-        for i, sk in enumerate(self.skills[self.skills_scroll:self.skills_scroll + 6]):
+        
+        IH, Y0 = 24, 26
+        for i, sk in enumerate(self.skills[self.skills_scroll:self.skills_scroll + 5]):
             idx = i + self.skills_scroll
             y   = Y0 + i * IH
             sel = (idx == self.skills_sel)
-            if sel: d.rectangle([4, y, LW-4, y+IH-2], fill=SEL)
-            d.text((8 if not sel else 18, y+4), (">" if sel else " ") + " " + sk[:40], font=FS, fill=TEXT if sel else DIM)
-        d.rectangle([0, LH-16, LW, LH], fill=PANEL)
-        d.text((8, LH-13), "Scroll: knob  Long-press: back", font=FN, fill=DIM)
+            if sel: rrect(d, 4, y, LW-4, y+IH-2, fill=SEL)
+            # split name and status if possible
+            parts = sk.split()
+            name  = parts[0] if parts else "?"
+            d.text((12, y+5), name[:20], font=FS, fill=TEXT if sel else DIM)
+            if len(parts) > 1:
+                d.text((140, y+5), " ".join(parts[1:])[:26], font=FN, fill=OK if sel else DIM)
+
+        d.rectangle([0, LH-18, LW, LH], fill=PANEL)
+        d.text((8, LH-15), "Scroll: knob  Long-press: back", font=FN, fill=DIM)
 
     def _draw_auth(self, d):
         aok = self._auth_ok()
@@ -542,32 +626,34 @@ class App:
             drawbtn(d, x0, 74, x1, 112, lbl, FM, sel=(i == self.auth_sel))
         if self.auth_busy:
             centered(d, "Working...", LW//2, 125, FS, WARN)
-        d.rectangle([0, LH-16, LW, LH], fill=PANEL)
-        d.text((8, LH-13), "Knob: select  Press: confirm  Long: back", font=FN, fill=DIM)
+        d.rectangle([0, LH-18, LW, LH], fill=PANEL)
+        d.text((8, LH-15), "Knob: select  Press: confirm  Long: back", font=FN, fill=DIM)
 
     def _draw_setup(self, d):
         topbar(d, "< Setup", dot=DIM)
-        items = ['Model Status', 'Profile', 'Onboard', 'Gateway', 'Back']
+        items = ['Model', 'Profile', 'Onboard', 'Gateway', 'Back']
         vals  = [
-            "ready" if self.rec.model_ready else "loading...",
+            "ready" if self.rec.model_ready else "wait",
             self.cfg.get('profile', 'claude'),
             "run", "start", "",
         ]
-        IH, Y0 = 22, 26
+        IH, Y0 = 24, 26
         for i, (item, val) in enumerate(zip(items, vals)):
             y   = Y0 + i * IH
             sel = (i == self.setup_sel)
-            if sel: d.rectangle([4, y, LW-4, y+IH-2], fill=SEL)
-            d.text((20, y+4), (">" if sel else " ") + " " + item, font=FS, fill=TEXT if sel else DIM)
+            if sel: rrect(d, 4, y, LW-4, y+IH-2, fill=SEL)
+            d.text((20, y+5), item, font=FS, fill=TEXT if sel else DIM)
             if val:
-                vx = LW - 8 - len(val)*6
-                d.text((max(vx, 145), y+4), val, font=FN, fill=ACCENT if sel else DIM)
+                d.text((180, y+5), val, font=FN, fill=ACCENT if sel else DIM)
+        
         if self.setup_result:
-            d.rectangle([0, LH-20, LW, LH], fill=PANEL)
-            d.text((8, LH-17), self.setup_result[:52], font=FN, fill=OK)
-        else:
-            d.rectangle([0, LH-16, LW, LH], fill=PANEL)
-            d.text((8, LH-13), "Knob: scroll  Press: select  Long: back", font=FN, fill=DIM)
+            d.rectangle([0, LH-40, LW, LH-20], fill=PANEL)
+            d.text((8, LH-35), self.setup_result[:48], font=FN, fill=OK)
+        
+        # stats footer
+        d.rectangle([0, LH-18, LW, LH], fill=PANEL)
+        s = self.stats
+        d.text((8, LH-15), f"CPU:{s.get('cpu')} RAM:{s.get('mem')} T:{s.get('temp')}", font=FN, fill=DIM)
 
     def _draw_status(self, d):
         topbar(d, "< Status", dot=DIM)
@@ -576,12 +662,17 @@ class App:
         r = self._get('status')
         if not r:
             centered(d, "Loading...", LW//2, LH//2, FM, WARN); return
+        
         lines = r[1].split('\n') if r[0] == 'ok' else [f"Error: {r[1]}"]
-        y = 26
-        for line in lines[:9]:
-            if y > LH - 8: break
-            d.text((8, y), line[:44], font=FN, fill=TEXT)
-            y += 15
+        y = 28
+        for line in lines[:8]:
+            if y > LH - 24: break
+            color = ACCENT if ':' in line else TEXT
+            d.text((10, y), line[:46], font=FN, fill=color)
+            y += 14
+        
+        d.rectangle([0, LH-18, LW, LH], fill=PANEL)
+        d.text((8, LH-15), "Rotate knob to scroll (TBD)", font=FN, fill=DIM)
 
     # ── Main loop ─────────────────────────────────────────────────────────────
     def run(self):
