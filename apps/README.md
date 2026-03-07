@@ -2,50 +2,52 @@
 
 This repository contains a collection of high-quality touchscreen applications for the Sipeed NanoKVM Pro.
 
-## Applications
+## 🚀 Quick Start (Installation)
 
-### 🐔 CLUCK (Farm Clock)
-A quirky, interactive clock featuring animated farm life.
-- **Clock:** High-readability display that erratically changes scale and position. Strictly clamped to prevent going off-screen.
-- **Goofy Zooms:** Every character has a unique "in your face" jump-scare animation:
-  - **Chicken:** Big goofy eyes.
-  - **Cow:** Massive snout and long eyelashes.
-  - **Pig:** Huge snout and spiral dizzy eyes.
-  - **Squirrel:** Giant cheeks and buck teeth.
-  - **Farmer:** Massive bushy beard and shocked stare.
-  - **Farmer's Daughter:** Yellow pigtails and surprised mouth.
-- **Pecking Interaction:** Chickens will peck at the clock, causing it to "flee" to another part of the screen.
-- **Entity Menu:** Toggles for all characters, Tractor, and House.
-- **Controls:** Knob rotate to move clock; Knob press to open settings; Long-press to exit.
+To use these apps on your NanoKVM Pro:
 
-### 🤖 PicoClaw (AI Agent)
-A consolidated AI assistant interface with voice and chat capabilities.
-- **Chat UI:** Modern chat bubble interface for both User and AI responses.
-- **Voice Integration:** Built-in offline speech recognition using Vosk (no API keys required).
-- **QR Login:** Generates a dynamic QR code linked to a local web server (port 8080) for easy API key configuration.
-- **System Stats:** Real-time CPU, RAM, and IP address monitoring.
-- **Skills:** Management of NanoKVM skills via the picoclaw CLI.
-
-### 📈 EQTY (Stock Tickers)
-Real-time financial monitoring with high-speed rendering.
-- **Live Updates:** Fetches latest prices for symbols like PSLV, CL=F, CRF, LEAV, INES.
-- **Visuals:** High-performance sparkline-style price indicators.
-- **Controls:** Knob rotate to switch symbols; Long-press to exit.
-
-### 🛡️ SCRNSVR (Screensaver Manager)
-A background daemon and UI to manage device idle states.
-- **App Cycling:** Automatically rotates through enabled apps when the device is idle.
-- **Status Dashboard:** Live view of idle time, current app, and next switch countdown.
-- **Service-Based:** Runs as a systemd service for persistence.
-
-### 🔗 Tailcode (Tailscale Status)
-Quick access to network connectivity information.
-- **QR Code:** Shows a join/login QR code for your Tailscale network.
-- **Performance:** Optimized with fast numpy-based rendering.
+1. **Copy the App Folders:** Transfer the desired app folder (e.g., `CLUCK`, `picoclaw`) to the `/userapp/` directory on your NanoKVM via SCP or SFTP.
+   ```bash
+   scp -r ./apps/CLUCK root@<your-kvm-ip>:/userapp/
+   ```
+2. **Install Dependencies:** Most apps require additional Python libraries. SSH into your NanoKVM and run:
+   ```bash
+   apt-get update && apt-get install -y libportaudio2 python3-pyaudio
+   pip3 install yfinance vosk qrcode flask psutil
+   ```
+3. **Launch:** The apps will automatically appear in your NanoKVM touchscreen menu under the "UserApp" section.
 
 ---
 
-## Global Controls
+## 📱 Applications
+
+### 🐔 CLUCK (Farm Clock)
+A quirky, interactive clock featuring animated farm life.
+- **Features:** High-readability clock, interactive pecking, and unique "goofy zoom" jump-scares for all characters (Cow, Pig, Squirrel, Farmer, etc.).
+- **Controls:** Rotate knob to move clock; Press to open settings; Long-press (2s) to exit.
+
+### 🤖 PicoClaw (AI Agent)
+A consolidated AI assistant interface with voice and chat capabilities.
+- **Features:** Modern chat bubble UI, offline voice recognition (Vosk), and a QR Login server (port 8080) for easy API key setup.
+- **Setup:** Scan the QR code in the "Login" tab to configure your AI provider on your phone.
+
+### 📈 EQTY (Stock Tickers)
+Real-time financial monitoring with high-speed rendering.
+- **Features:** Live price updates for symbols like PSLV, CL=F, and CRF. High-performance sparklines.
+- **Controls:** Rotate knob to switch symbols.
+
+### 🛡️ SCRNSVR (Screensaver Manager)
+A background daemon and UI to manage device idle states.
+- **Features:** Automatically cycles through enabled apps when idle. Includes a live status dashboard.
+- **System Service:** Can be run as a systemd service for persistence.
+
+### 🔗 Tailcode (Tailscale Status)
+Quick access to network connectivity information.
+- **Features:** Optimized numpy rendering. Displays your Tailscale IP and a login QR code.
+
+---
+
+## 🎮 Global Controls
 - **Knob Rotate:** Scroll menus or change values.
 - **Knob Press:** Select, confirm, or toggle.
 - **Knob Long-Press (2s):** Exit the current app and return to the main system menu.
