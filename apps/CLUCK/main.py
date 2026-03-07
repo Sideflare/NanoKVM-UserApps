@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """
-CLUCK: A quirky farm clock for NanoKVM.
-Features:
-- Animated chickens and farm animals.
-- Erratic "in your face" moments.
-- Interactive clock that avoids pecking.
-- Configurable entities via gear menu.
+CLUCK v1.1.0: A quirky farm clock for NanoKVM.
+─────────────────────────────────────────────
+Fixes: Clock clamping, goofy zoom chicken, scrollable menu, long-press exit.
 """
 import os, sys, time, random, math, threading, mmap
 import numpy as np
@@ -51,15 +48,15 @@ def _f(sz, b=False):
 F_CLOCK = _f(48, True)
 F_BIG   = _f(80, True)
 F_MENU  = _f(14, True)
+F_SM    = _f(11)
 
 # ── Sprites & Drawing ────────────────────────────────────────────────────────
-def draw_chicken(d, x, y, s=1.0, face_right=True, pecking=False):
+def draw_chicken(d, x, y, s=1.0, face_right=True, pecking=False, zoom=False):
     """Draw a simple chicken at (x,y) with scale s."""
     # Body
     w, h = 20*s, 16*s
     x0, y0 = x - w//2, y - h
-    body = [x0, y0, x0+w, y0+h]
-    d.ellipse(body, fill=WHITE)
+    d.ellipse([x0, y0, x0+w, y0+h], fill=WHITE)
     
     # Head
     hw = 10*s
@@ -68,94 +65,121 @@ def draw_chicken(d, x, y, s=1.0, face_right=True, pecking=False):
     if pecking: hy += 8*s
     d.ellipse([hx, hy, hx+hw, hy+hw], fill=WHITE)
     
-    # Beak & Wattle
+    # Beak & Comb
     bx = hx+hw if face_right else hx
     if face_right:
         d.polygon([(bx, hy+4*s), (bx, hy+8*s), (bx+6*s, hy+6*s)], fill=ORANGE)
-        d.ellipse([bx, hy-4*s, bx+4*s, hy], fill=RED) # Comb
+        d.ellipse([bx, hy-4*s, bx+4*s, hy], fill=RED) 
     else:
         d.polygon([(bx, hy+4*s), (bx, hy+8*s), (bx-6*s, hy+6*s)], fill=ORANGE)
-        d.ellipse([bx-4*s, hy-4*s, bx, hy], fill=RED) # Comb
+        d.ellipse([bx-4*s, hy-4*s, bx, hy], fill=RED)
     
-    # Eye
-    ex = hx+6*s if face_right else hx+2*s
-    d.rectangle([ex, hy+3*s, ex+2*s, hy+5*s], fill=BG_COLOR)
+    # Eyes
+    if zoom:
+        er = 4*s
+        d.ellipse([hx+s, hy+s, hx+s+er, hy+s+er], fill=WHITE, outline=BG_COLOR)
+        d.ellipse([hx+5*s, hy+s, hx+5*s+er, hy+s+er], fill=WHITE, outline=BG_COLOR)
+        d.ellipse([hx+2*s, hy+2*s, hx+2*s+2*s, hy+2*s+2*s], fill=BG_COLOR)
+        d.ellipse([hx+6*s, hy+2*s, hx+6*s+2*s, hy+2*s+2*s], fill=BG_COLOR)
+    else:
+        ex = hx+6*s if face_right else hx+2*s
+        d.rectangle([ex, hy+3*s, ex+2*s, hy+5*s], fill=BG_COLOR)
     
     # Legs
     lx = x0 + w//2
-    d.line([lx-4*s, y0+h, lx-4*s, y0+h+6*s], fill=ORANGE, width=int(2*s))
-    d.line([lx+4*s, y0+h, lx+4*s, y0+h+6*s], fill=ORANGE, width=int(2*s))
+    d.line([lx-4*s, y0+h, lx-4*s, y0+h+6*s], fill=ORANGE, width=max(1,int(2*s)))
+    d.line([lx+4*s, y0+h, lx+4*s, y0+h+6*s], fill=ORANGE, width=max(1,int(2*s)))
 
-def draw_cow(d, x, y, s=1.0, face_right=True):
+def draw_cow(d, x, y, s=1.0, face_right=True, zoom=False):
     w, h = 40*s, 26*s
     x0, y0 = x - w//2, y - h
-    d.rectangle([x0, y0, x0+w, y0+h], fill=WHITE) # Body
-    # Spots
+    d.rectangle([x0, y0, x0+w, y0+h], fill=WHITE)
     d.rectangle([x0+4*s, y0+4*s, x0+12*s, y0+12*s], fill=BG_COLOR)
     d.rectangle([x0+24*s, y0+10*s, x0+32*s, y0+20*s], fill=BG_COLOR)
     # Head
     hx = x0+w-4*s if face_right else x0-10*s
     hy = y0-4*s
     d.rectangle([hx, hy, hx+14*s, hy+14*s], fill=WHITE)
-    d.rectangle([hx, hy+8*s, hx+14*s, hy+14*s], fill=PINK) # Nose
-    # Legs
-    d.line([x0+4*s, y0+h, x0+4*s, y0+h+8*s], fill=WHITE, width=int(3*s))
-    d.line([x0+w-4*s, y0+h, x0+w-4*s, y0+h+8*s], fill=WHITE, width=int(3*s))
+    # Goofy Snout
+    snw, snh = (20*s if zoom else 14*s), (14*s if zoom else 6*s)
+    d.rectangle([hx-2*s, hy+8*s, hx+snw, hy+8*s+snh], fill=PINK)
+    if zoom:
+        # Giant nostrils
+        d.ellipse([hx+2*s, hy+10*s, hx+6*s, hy+14*s], fill=BG_COLOR)
+        d.ellipse([hx+12*s, hy+10*s, hx+16*s, hy+14*s], fill=BG_COLOR)
+        # Eyelashes
+        d.line([hx, hy, hx-4*s, hy-4*s], fill=BG_COLOR, width=2)
+        d.line([hx+4*s, hy, hx+4*s, hy-6*s], fill=BG_COLOR, width=2)
+    
+    d.line([x0+4*s, y0+h, x0+4*s, y0+h+8*s], fill=WHITE, width=max(1,int(3*s)))
+    d.line([x0+w-4*s, y0+h, x0+w-4*s, y0+h+8*s], fill=WHITE, width=max(1,int(3*s)))
 
-def draw_pig(d, x, y, s=1.0, face_right=True):
+def draw_pig(d, x, y, s=1.0, face_right=True, zoom=False):
     w, h = 30*s, 20*s
     x0, y0 = x - w//2, y - h
     d.ellipse([x0, y0, x0+w, y0+h], fill=PINK)
-    # Head
     hx = x0+w-8*s if face_right else x0-6*s
     hy = y0+2*s
     d.ellipse([hx, hy, hx+14*s, hy+14*s], fill=PINK)
-    # Snout
-    sx = hx+10*s if face_right else hx-2*s
-    d.ellipse([sx, hy+4*s, sx+6*s, hy+10*s], fill=(255,100,100))
+    # Massive Snout
+    sx = hx+10*s if face_right else hx-4*s
+    snw = 12*s if zoom else 6*s
+    d.ellipse([sx, hy+4*s, sx+snw, hy+12*s], fill=(255,100,100))
+    if zoom:
+        # Spiral eyes
+        d.arc([hx+2*s, hy+2*s, hx+6*s, hy+6*s], 0, 360, fill=BG_COLOR)
+        d.arc([hx+8*s, hy+2*s, hx+12*s, hy+6*s], 0, 360, fill=BG_COLOR)
 
-def draw_squirrel(d, x, y, s=1.0, face_right=True):
+def draw_squirrel(d, x, y, s=1.0, face_right=True, zoom=False):
     w, h = 16*s, 12*s
     x0, y0 = x - w//2, y - h
     d.ellipse([x0, y0, x0+w, y0+h], fill=BROWN)
-    # Tail
     tx = x0-8*s if face_right else x0+w
     d.ellipse([tx, y0-8*s, tx+12*s, y0+4*s], fill=BROWN)
+    if zoom:
+        # Giant cheeks and teeth
+        d.ellipse([x-6*s, y-4*s, x+s, y+2*s], fill=PINK)
+        d.ellipse([x, y-4*s, x+7*s, y+2*s], fill=PINK)
+        d.rectangle([x-2*s, y, x+3*s, y+6*s], fill=WHITE) # Teeth
 
-def draw_farmer(d, x, y, s=1.0, is_girl=False):
-    # Body
+def draw_farmer(d, x, y, s=1.0, is_girl=False, zoom=False):
     w, h = 14*s, 24*s
     x0, y0 = x - w//2, y - h
     color = BLUE if not is_girl else PINK
     d.rectangle([x0, y0, x0+w, y0+h], fill=color)
-    # Head
     hy = y0 - 10*s
     d.ellipse([x0, hy, x0+w, hy+12*s], fill=SKIN)
-    # Hat/Hair
     if not is_girl:
-        d.rectangle([x0-2*s, hy, x0+w+2*s, hy+4*s], fill=BROWN) # Hat
+        d.rectangle([x0-2*s, hy, x0+w+2*s, hy+4*s], fill=BROWN)
+        if zoom:
+            # Huge beard
+            d.polygon([(x0, hy+8*s), (x0+w, hy+8*s), (x+w//2, hy+20*s)], fill=GRAY)
+            # Shocked eyes
+            d.ellipse([x0+2*s, hy+2*s, x0+5*s, hy+5*s], fill=WHITE, outline=BG_COLOR)
+            d.ellipse([x0+8*s, hy+2*s, x0+11*s, hy+5*s], fill=WHITE, outline=BG_COLOR)
     else:
-        d.rectangle([x0-2*s, hy, x0+w+2*s, hy+4*s], fill=YELLOW) # Hair
+        # Pigtails
+        d.rectangle([x0-4*s, hy, x0, hy+4*s], fill=YELLOW)
+        d.rectangle([x0+w, hy, x0+w+4*s, hy+4*s], fill=YELLOW)
+        d.rectangle([x0-2*s, hy, x0+w+2*s, hy+4*s], fill=YELLOW)
+        if zoom:
+            # Surprised face
+            d.ellipse([x0+2*s, hy+6*s, x0+w-2*s, hy+10*s], fill=RED) # O-mouth
 
 def draw_tractor(d, x, y, s=1.0, face_right=True):
     w, h = 40*s, 24*s
     x0, y0 = x - w//2, y - h
-    # Big wheel
     wx = x0+8*s if face_right else x0+w-8*s
-    d.ellipse([wx-10*s, y0+h-10*s, wx+10*s, y0+h+10*s], fill=BG_COLOR, outline=RED, width=int(3*s))
-    # Body
+    d.ellipse([wx-10*s, y0+h-10*s, wx+10*s, y0+h+10*s], fill=BG_COLOR, outline=RED, width=max(1,int(3*s)))
     d.rectangle([x0, y0, x0+w, y0+h], fill=GREEN)
-    # Cabin
     d.rectangle([x0+10*s, y0-10*s, x0+30*s, y0], fill=GREEN)
 
 def draw_house(d, x, y, s=1.0):
     w, h = 60*s, 40*s
     x0, y0 = x - w//2, y - h
     d.rectangle([x0, y0, x0+w, y0+h], fill=RED)
-    # Roof
-    d.polygon([(x0-4*s, y0), (x+10*s, y0-20*s), (x0+w+4*s, y0)], fill=BROWN)
-    # Door
-    d.rectangle([x-6*s, y0+h-16*s, x+6*s, y0+h], fill=BG_COLOR)
+    d.polygon([(x0-4*s, y0), (x0+w//2, y0-20*s), (x0+w+4*s, y0)], fill=BROWN)
+    d.rectangle([x0+w//2-6*s, y0+h-16*s, x0+w//2+6*s, y0+h], fill=BG_COLOR)
 
 # ── Logic ────────────────────────────────────────────────────────────────────
 class Entity:
@@ -164,10 +188,10 @@ class Entity:
         self.x, self.y = x, y
         self.vx, self.vy = random.uniform(-1, 1), random.uniform(-0.5, 0.5)
         self.scale = 1.0
-        self.state = "idle" # idle, walk, peck, zoom
+        self.state = "idle" 
         self.timer = 0
         self.face_right = (self.vx > 0)
-        self.z = y  # depth sorting
+        self.z = y
 
     def update(self):
         if self.state == "zoom":
@@ -175,184 +199,149 @@ class Entity:
             if self.timer <= 0:
                 self.state = "idle"
                 self.scale = 1.0
-                self.x = random.randint(20, LW-20)
-                self.y = random.randint(40, LH-10)
+                self.x, self.y = random.randint(20, LW-20), random.randint(40, LH-10)
             return
 
-        # Movement
-        if random.random() < 0.02: # Change state
+        if random.random() < 0.02:
             self.state = random.choice(["idle", "walk", "walk", "peck"])
-            self.vx = random.uniform(-2, 2)
-            self.vy = random.uniform(-0.5, 0.5)
+            self.vx, self.vy = random.uniform(-2, 2), random.uniform(-0.5, 0.5)
         
         if self.state == "walk":
-            self.x += self.vx
-            self.y += self.vy
-            self.x = max(10, min(LW-10, self.x))
+            self.x += self.vx; self.y += self.vy
+            if self.x < -20: self.x = LW+20
+            if self.x > LW+20: self.x = -20
             self.y = max(40, min(LH-10, self.y))
             self.face_right = (self.vx > 0)
         
-        # Random Zoom (In your face!)
-        if self.kind == "chicken" and random.random() < 0.001:
-            self.state = "zoom"
-            self.scale = 5.0
-            self.x, self.y = LW//2, LH-20
-            self.timer = 60 # 2 seconds
+        # EVERYONE can zoom!
+        if self.kind not in ("house", "tractor") and random.random() < 0.0015:
+            self.state = "zoom"; self.scale = 5.0
+            self.x, self.y = LW//2, LH-20; self.timer = 60
 
-        self.z = self.y # Update depth
+        self.z = self.y
 
     def draw(self, d):
-        if self.kind == "chicken": draw_chicken(d, self.x, self.y, self.scale, self.face_right, self.state=="peck")
-        elif self.kind == "cow":   draw_cow(d, self.x, self.y, self.scale, self.face_right)
-        elif self.kind == "pig":   draw_pig(d, self.x, self.y, self.scale, self.face_right)
-        elif self.kind == "squirrel": draw_squirrel(d, self.x, self.y, self.scale, self.face_right)
-        elif self.kind == "farmer":   draw_farmer(d, self.x, self.y, self.scale, False)
-        elif self.kind == "daughter": draw_farmer(d, self.x, self.y, self.scale, True)
+        z = (self.state == "zoom")
+        if self.kind == "chicken": draw_chicken(d, self.x, self.y, self.scale, self.face_right, self.state=="peck", z)
+        elif self.kind == "cow":   draw_cow(d, self.x, self.y, self.scale, self.face_right, z)
+        elif self.kind == "pig":   draw_pig(d, self.x, self.y, self.scale, self.face_right, z)
+        elif self.kind == "squirrel": draw_squirrel(d, self.x, self.y, self.scale, self.face_right, z)
+        elif self.kind == "farmer":   draw_farmer(d, self.x, self.y, self.scale, False, z)
+        elif self.kind == "farmer's daughter": draw_farmer(d, self.x, self.y, self.scale, True, z)
         elif self.kind == "tractor":  draw_tractor(d, self.x, self.y, self.scale, self.face_right)
         elif self.kind == "house":    draw_house(d, self.x, self.y, self.scale)
 
 class App:
     def __init__(self):
         self.fb = FB()
-        self.clock_pos = [LW-60, 40]
+        self.clock_pos = [LW//2, LH//2]
         self.clock_scale = 1.0
         self.clock_target_scale = 1.0
         self.entities = []
         self.running = True
         self.menu_open = False
         self.menu_sel = 0
+        self.menu_scroll = 0
         
-        # Config
         self.opts = {
-            "chickens": True,
-            "cows": False,
-            "pigs": False,
-            "squirrels": True,
-            "farmer": False,
-            "daughter": False,
-            "tractor": False,
-            "house": False
+            "chickens": True, "cows": False, "pigs": False, "squirrels": True,
+            "farmer": False, "farmer's daughter": False, "tractor": False, "house": False
         }
-        self.opt_keys = list(self.opts.keys())
+        self.opt_keys = list(self.opts.keys()) + ["SAVE & EXIT"]
         self._spawn_entities()
 
     def _spawn_entities(self):
         self.entities = []
-        if self.opts["house"]:    self.entities.append(Entity("house", 40, 60))
-        if self.opts["tractor"]:  self.entities.append(Entity("tractor", LW-40, 80))
-        
-        count = 3 if self.opts["chickens"] else 0
-        for _ in range(count): self.entities.append(Entity("chicken", random.randint(20, LW), random.randint(40, LH)))
-        
-        if self.opts["cows"]: self.entities.append(Entity("cow", random.randint(20, LW), random.randint(40, LH)))
-        if self.opts["pigs"]: self.entities.append(Entity("pig", random.randint(20, LW), random.randint(40, LH)))
-        if self.opts["squirrels"]: self.entities.append(Entity("squirrel", random.randint(20, LW), random.randint(40, LH)))
-        if self.opts["farmer"]: self.entities.append(Entity("farmer", random.randint(20, LW), random.randint(40, LH)))
-        if self.opts["daughter"]: self.entities.append(Entity("daughter", random.randint(20, LW), random.randint(40, LH)))
+        for k, v in self.opts.items():
+            if v:
+                if k == "chickens":
+                    for _ in range(3): self.entities.append(Entity("chicken", random.randint(20, LW), random.randint(40, LH)))
+                else: self.entities.append(Entity(k, random.randint(20, LW), random.randint(40, LH)))
 
     def update_clock(self):
-        # Random big clock moment
-        if random.random() < 0.002:
-            self.clock_target_scale = 2.0
-        elif self.clock_scale > 1.1 and random.random() < 0.01:
-            self.clock_target_scale = 1.0
-            
-        # Move clock away from chickens if pecking
+        if random.random() < 0.002: self.clock_target_scale = 2.0
+        elif self.clock_scale > 1.1 and random.random() < 0.01: self.clock_target_scale = 1.0
+        
         for e in self.entities:
             if e.kind == "chicken" and e.state == "peck":
-                dx = self.clock_pos[0] - e.x
-                dy = self.clock_pos[1] - e.y
-                dist = math.hypot(dx, dy)
-                if dist < 40:
-                    self.clock_pos[0] += dx * 0.1
-                    self.clock_pos[1] += dy * 0.1
+                dx, dy = self.clock_pos[0]-e.x, self.clock_pos[1]-e.y
+                if math.hypot(dx, dy) < 40:
+                    self.clock_pos[0] += dx * 0.1; self.clock_pos[1] += dy * 0.1
         
-        # Clamp clock
-        self.clock_pos[0] = max(40, min(LW-40, self.clock_pos[0]))
-        self.clock_pos[1] = max(20, min(LH-20, self.clock_pos[1]))
-        
-        # Smooth scale
         self.clock_scale += (self.clock_target_scale - self.clock_scale) * 0.1
 
     def draw(self):
         img = Image.new('RGB', (LW, LH), BG_COLOR)
         d = ImageDraw.Draw(img)
         
-        # Draw entities sorted by Y (depth)
         self.entities.sort(key=lambda e: e.z)
         for e in self.entities:
-            e.update()
+            if not self.menu_open: e.update()
             e.draw(d)
         
-        # Draw Clock
+        # Clock
         t_str = time.strftime("%H:%M")
         font = F_BIG if self.clock_scale > 1.5 else F_CLOCK
         bb = d.textbbox((0,0), t_str, font=font)
         cw, ch = bb[2]-bb[0], bb[3]-bb[1]
-        cx, cy = self.clock_pos
+        cx, cy = (LW//2, LH//2) if self.clock_scale > 1.5 else self.clock_pos
         
-        # Center clock if big
-        if self.clock_scale > 1.5:
-            cx, cy = LW//2, LH//2
-            
+        # STRICT CLAMPING
+        cx = max(cw//2 + 2, min(LW - cw//2 - 2, cx))
+        cy = max(ch//2 + 2, min(LH - ch//2 - 2, cy))
+        self.clock_pos = [cx, cy]
+        
         d.text((cx - cw//2, cy - ch//2), t_str, font=font, fill=WHITE)
-        
-        # Gear Icon (Top Right)
-        d.text((LW-20, 4), "@", font=F_MENU, fill=GRAY)
+        d.text((LW-20, 4), "@", font=F_MENU, fill=GRAY) # Gear
 
-        # Menu Overlay
         if self.menu_open:
-            d.rectangle([20, 20, LW-20, LH-20], fill=(20, 20, 30), outline=WHITE)
-            d.text((100, 24), "OPTIONS", font=F_MENU, fill=WHITE)
-            y = 44
-            for i, k in enumerate(self.opt_keys):
-                if y > LH-30: break
-                sel = (i == self.menu_sel)
-                val = self.opts[k]
-                label = f"{'>' if sel else ' '} {k.upper()}: {'ON' if val else 'OFF'}"
-                d.text((40, y), label, font=F_MENU, fill=ORANGE if sel else WHITE)
-                y += 16
-
+            d.rectangle([40, 10, LW-40, LH-10], fill=(20, 20, 30), outline=ACCENT)
+            d.text((LW//2-30, 15), "SETTINGS", font=F_MENU, fill=ACCENT)
+            start = self.menu_scroll
+            for i, k in enumerate(self.opt_keys[start:start+6]):
+                idx = i + start
+                y = 35 + i*22
+                sel = (idx == self.menu_sel)
+                if k == "SAVE & EXIT":
+                    label = f"{'>' if sel else ' '} {k}"
+                    d.text((50, y), label, font=F_MENU, fill=GREEN if sel else WHITE)
+                else:
+                    val = self.opts[k]
+                    label = f"{'>' if sel else ' '} {k.upper()}: {'ON' if val else 'OFF'}"
+                    d.text((50, y), label, font=F_SM, fill=ORANGE if sel else WHITE)
         self.fb.show(img)
 
     def run(self):
         with TouchScreen() as touch, GpioKeys() as keys, RotaryEncoder() as rotary:
             while self.running:
-                # Input
                 r = rotary.read_event(0)
                 if r:
                     if self.menu_open:
                         self.menu_sel = (self.menu_sel + r) % len(self.opt_keys)
-                    else:
-                        # Rotate moves clock for fun
-                        self.clock_pos[0] += r * 5
-
-                k = keys.read_event(0)
-                if k and k[0] == 'key_release' and k[1] == 'ENTER':
-                    if self.menu_open:
-                        key = self.opt_keys[self.menu_sel]
-                        self.opts[key] = not self.opts[key]
-                        self._spawn_entities()
-                    else:
-                        self.menu_open = True
+                        if self.menu_sel < self.menu_scroll: self.menu_scroll = self.menu_sel
+                        elif self.menu_sel >= self.menu_scroll + 6: self.menu_scroll = self.menu_sel - 5
+                    else: self.clock_pos[0] += r * 8
+                
+                kev = keys.read_event(0)
+                if kev:
+                    if kev[0] == 'key_long_press': self.running = False
+                    elif kev[0] == 'key_release' and kev[1] == 'ENTER':
+                        if self.menu_open:
+                            k = self.opt_keys[self.menu_sel]
+                            if k == "SAVE & EXIT": self.menu_open = False
+                            else: self.opts[k] = not self.opts[k]; self._spawn_entities()
+                        else: self.menu_open = True
                 
                 t = touch.read_event(0)
                 if t and t[0] == 'touch_down':
                     tx, ty = TouchScreen.map_coords_270(t[1], t[2])
-                    # Toggle menu
-                    if tx > LW-30 and ty < 30:
-                        self.menu_open = not self.menu_open
-                    elif self.menu_open and (tx < 20 or tx > LW-20 or ty < 20 or ty > LH-20):
-                        self.menu_open = False
-                    elif not self.menu_open:
-                        # Move clock to touch
-                        self.clock_pos = [tx, ty]
+                    if tx > LW-40 and ty < 40: self.menu_open = not self.menu_open
+                    elif self.menu_open and (tx < 40 or tx > LW-40): self.menu_open = False
+                    elif not self.menu_open: self.clock_pos = [tx, ty]
 
-                if not self.menu_open:
-                    self.update_clock()
-                
                 self.draw()
-                time.sleep(0.08)
+                time.sleep(0.05)
+        self.fb.close()
 
 if __name__ == "__main__":
     App().run()
