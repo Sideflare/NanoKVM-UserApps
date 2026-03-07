@@ -150,9 +150,9 @@ class App:
             st = get_status()
             lines = [
                 f"Daemon: {'Running' if st else 'Stopped'}",
-                f"Current: {st.get('current_app', 'None')}",
-                f"Idle: {st.get('idle_time', 0)}s",
-                f"Next Switch: {st.get('time_remaining', 0)}s"
+                f"Current: {st.get('current', 'None')}",
+                f"Idle: {st.get('idle_seconds', 0)}s",
+                f"Next Switch: {st.get('next_switch_in', 0)}s"
             ]
             for i, l in enumerate(lines):
                 d.text((12, y0 + i*22), l, font=FM, fill=OK if i==0 else TEXT)
