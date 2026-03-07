@@ -21,7 +21,7 @@ from framebuffer import Framebuffer
 from input import TouchScreen, GpioKeys, RotaryEncoder
 
 CONFIG_FILE     = '/etc/kvm/stocks_config.json'
-DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY']
+DEFAULT_SYMBOLS = ['PSLV', 'CL=F', 'LEAV', 'INES', 'SPY']
 
 SCREEN_W = 320
 SCREEN_H = 172
