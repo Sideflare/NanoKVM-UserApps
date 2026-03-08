@@ -1,0 +1,6 @@
+# Core dependencies for NanoKVM UserApp Suite
+Pillow>=10.0.0
+requests>=2.31.0
+vosk>=0.3.45
+pyaudio>=0.2.13
+numpy>=1.24.0
