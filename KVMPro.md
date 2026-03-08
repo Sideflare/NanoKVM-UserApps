@@ -28,7 +28,7 @@ All custom user apps are consolidated into `NanoKVM-UserApps/apps/`.
 To reinstall your custom apps to the fresh OS:
 1. **Sync Apps:** 
    ```bash
-   scp -r NanoKVM-UserApps/apps/* root@<device-ip>:/root/apps/
+   scp -r NanoKVM-UserApps/apps/* root@<device-ip>:/userapp/
    ```
 2. **Setup Services:**
    - **Screensaver:** Re-enable `screensaver.service` in systemd.

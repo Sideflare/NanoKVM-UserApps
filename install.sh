@@ -18,7 +18,7 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-APP_DIR="/root/apps"
+APP_DIR="/userapp"
 SERVICE_PATH="/etc/systemd/system/screensaver.service"
 PYTHON_BIN="/usr/local/bin/python3"
 
