@@ -1,0 +1,10 @@
+[application]
+name = "PicoClaw"
+version = "1.0.0"
+descriptions = "PicoClaw AI Agent — voice commands, agent chat, skills, auth, and configuration."
+
+[author]
+name = "Claude"
+
+[interaction]
+requires_user_input = true

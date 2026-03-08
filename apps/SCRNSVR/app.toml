@@ -1,0 +1,10 @@
+[application]
+name = "Screensaver"
+version = "1.0.0"
+descriptions = "Screensaver manager — cycle apps on idle, set timeouts, enable/disable per-app."
+
+[author]
+name = "cleavines01"
+
+[interaction]
+requires_user_input = true

@@ -1,0 +1,8 @@
+[application]
+name = "CLUCK"
+version = "1.0.0"
+description = "Animated farm clock with erratic chickens"
+[author]
+name = "cleavines01"
+[interaction]
+requires_user_input = true
