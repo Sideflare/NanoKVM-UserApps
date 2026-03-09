@@ -81,9 +81,11 @@ def centered(d, text, cx, cy, font, color):
     bb = d.textbbox((0, 0), text, font=font)
     d.text((cx - (bb[2]-bb[0])//2, cy - (bb[3]-bb[1])//2), text, font=font, fill=color)
 
+WHITE = (255, 255, 255)
+
 def topbar(d, title, dot=OK, back_sel=False):
     d.rectangle([0, 0, LW, 21], fill=SEL if back_sel else PANEL)
-    d.text((8, 3), "< BACK", font=FT, fill=WHITE if back_sel else ACCENT)
+    d.text((8, 3), "\u2190 BACK", font=FT, fill=WHITE if back_sel else ACCENT)
     centered(d, title, LW//2 + 20, 11, FT, TEXT)
     d.ellipse([LW-13, 6, LW-5, 14], fill=dot)
     d.line([0, 21, LW, 21], fill=DIM, width=1)
@@ -124,9 +126,15 @@ def drawwaveform(d, x, y, w, h, level):
 
 # ── Pages ──────────────────────────────────────────────────────────────────
 PG_HOME, PG_AGENT, PG_SKILLS, PG_SETTINGS, PG_STATUS = range(5)
-HOME_TARGETS = [PG_AGENT, PG_SKILLS, PG_SETTINGS, PG_STATUS, None] # None = EXIT
-HOME_LABELS  = ["Agent Chat", "Skills", "Settings", "Status", "EXIT APP"]
-HOME_ICONS   = [">_ ", "## ", "{}", " i ", " [X]"]
+# 4 pages — EXIT removed (use back arrow or long-press)
+HOME_TARGETS = [PG_AGENT, PG_SKILLS, PG_SETTINGS, PG_STATUS]
+HOME_LABELS  = ["Agent Chat", "Skills", "Settings", "Status/Claw"]
+HOME_ICONS   = [">_ ", "## ", "{} ", " \u26a1 "]
+
+# Claw service state colors: red=stopped, yellow=starting, green=running
+CLAW_STOPPED  = (210, 40, 40)
+CLAW_STARTING = (230, 185, 0)
+CLAW_RUNNING  = (0, 200, 100)
 
 class App:
     def __init__(self):
@@ -149,22 +157,47 @@ class App:
         self.voice_text   = ""
         self.voice_timer  = 0
 
-        self.settings_sel    = 0
+        self.settings_sel = 0
         self.stats        = {}
         self.skills       = []
         self.skills_sel   = 0
         self.auth_qr      = None
         self.qr_mode      = False
 
+        # Claw service state: "stopped", "starting", "running"
+        self.claw_state   = "stopped"
+        self._check_claw_state()
+
         threading.Thread(target=self._stats_loop, daemon=True).start()
         self._bg('auth', pc.auth_status)
         self._bg('version', pc.get_version)
 
+    def _check_claw_state(self):
+        try:
+            r = subprocess.run(["systemctl", "is-active", "picoclaw"],
+                               capture_output=True, text=True, timeout=2)
+            self.claw_state = "running" if r.stdout.strip() == "active" else "stopped"
+        except:
+            self.claw_state = "stopped"
+
+    def _toggle_claw(self):
+        def _run():
+            self.claw_state = "starting"
+            self._dirty = True
+            if self.claw_state != "running":
+                subprocess.run(["systemctl", "start", "picoclaw"], timeout=10)
+            else:
+                subprocess.run(["systemctl", "stop", "picoclaw"], timeout=10)
+            self._check_claw_state()
+            self._dirty = True
+        threading.Thread(target=_run, daemon=True).start()
+
     def _stats_loop(self):
         while self.running:
             self.stats = get_sys_stats()
+            self._check_claw_state()
             if self.page in (PG_HOME, PG_STATUS, PG_SETTINGS): self._dirty = True
-            time.sleep(2)
+            time.sleep(3)
 
     def _bg(self, key, fn, *args):
         def _run():
@@ -218,6 +251,7 @@ class App:
         if   p == PG_HOME:     self.goto(HOME_TARGETS[self.home_sel])
         elif p == PG_AGENT:    self._toggle_voice()
         elif p == PG_SETTINGS: self._settings_action(self.settings_sel)
+        elif p == PG_STATUS:   self._toggle_claw()
         self._dirty = True
 
     def _toggle_voice(self):
@@ -297,18 +331,27 @@ class App:
     def _draw_home(self, d):
         ver = self._get('version')[1] if self._get('version') else "..."
         topbar(d, f"PicoClaw v{ver}")
-        bw, bh = LW // 3, (LH - 44) // 2
+        # 2x2 grid for 4 items — larger buttons, easier to read on small screen
+        bw, bh = LW // 2, (LH - 44) // 2
         for i, (lbl, ico) in enumerate(zip(HOME_LABELS, HOME_ICONS)):
-            col, row = i % 3, i // 3
+            col, row = i % 2, i // 2
             x0, y0 = col*bw+4, 24+row*bh+4
             x1, y1 = x0+bw-8, y0+bh-8
             sel = (i == self.home_sel)
-            rrect(d, x0, y0, x1, y1, fill=SEL if sel else BTN, outline=ACCENT if sel else None)
-            d.text((x0+8, y0+6), ico, font=FN, fill=ACCENT if sel else DIM)
-            centered(d, lbl, (x0+x1)//2, (y0+y1)//2+6, FM, TEXT if sel else DIM)
+            # Status/Claw button gets a dynamic color
+            if i == 3:
+                claw_col = {"running": CLAW_RUNNING, "starting": CLAW_STARTING,
+                            "stopped": CLAW_STOPPED}.get(self.claw_state, CLAW_STOPPED)
+                outline = claw_col
+                fill = SEL if sel else (30, 15, 15) if self.claw_state=="stopped" else (10,30,15)
+            else:
+                fill, outline = (SEL if sel else BTN), (ACCENT if sel else None)
+            rrect(d, x0, y0, x1, y1, fill=fill, outline=outline)
+            d.text((x0+8, y0+5), ico, font=FM, fill=ACCENT if sel else DIM)
+            centered(d, lbl, (x0+x1)//2, (y0+y1)//2+7, FS, TEXT if sel else DIM)
         s = self.stats
-        stat_str = f"CPU:{s.get('cpu')} RAM:{s.get('mem')} IP:{s.get('ip')}"
-        d.text((8, LH-15), stat_str, font=FN, fill=DIM)
+        stat_str = f"CPU:{s.get('cpu')} MEM:{s.get('mem')} {s.get('ip')}"
+        d.text((8, LH-13), stat_str, font=FN, fill=DIM)
 
     def _draw_agent(self, d):
         topbar(d, "Agent Chat", back_sel=(self.sub_sel==0))
@@ -350,11 +393,19 @@ class App:
             d.text((12, y+5), item, font=FS, fill=TEXT if sel else DIM)
 
     def _draw_status(self, d):
-        topbar(d, "System Status", back_sel=(self.sub_sel==0))
+        claw_col = {"running": CLAW_RUNNING, "starting": CLAW_STARTING,
+                    "stopped": CLAW_STOPPED}.get(self.claw_state, CLAW_STOPPED)
+        topbar(d, "Status / Claw", dot=claw_col, back_sel=(self.sub_sel==0))
         y = 28
         for k, v in self.stats.items():
             d.text((10, y), f"{k.upper()}: {v}", font=FM, fill=TEXT)
-            y += 20
+            y += 18
+        # CLAW START/STOP button
+        y = LH - 36
+        btn_lbl = "CLAW: STOP" if self.claw_state == "running" else \
+                  "CLAW: STARTING..." if self.claw_state == "starting" else "CLAW: START"
+        rrect(d, 8, y, LW-8, y+28, fill=claw_col, r=6)
+        centered(d, btn_lbl, LW//2, y+14, FM, (10,10,10))
 
     def run(self):
         def _start_server():
@@ -375,8 +426,8 @@ class App:
                     tx, ty = TouchScreen.map_coords_270(t[1], t[2])
                     if ty < 30: self.goto(PG_HOME)
                     elif self.page == PG_HOME:
-                        col, row = tx // (LW // 3), (ty-24) // ((LH-44)//2)
-                        idx = row * 3 + col
+                        col, row = tx // (LW // 2), (ty-24) // ((LH-44)//2)
+                        idx = row * 2 + col
                         if idx < len(HOME_TARGETS): self.goto(HOME_TARGETS[idx])
                     elif self.page == PG_AGENT and tx > 260 and ty > 140:
                         self._toggle_voice()
